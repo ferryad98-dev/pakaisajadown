@@ -8,19 +8,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Kasih URL-nya dulu dong, Bro!' }, { status: 400 });
     }
 
-    // Deteksi apakah link berasal dari Twitter atau X
     const isTwitter = url.includes('twitter.com') || url.includes('x.com');
 
     if (isTwitter) {
-      // LOGIC KHUSUS TWITTER: Menggunakan 'best-all-in-one-video-downloader' dari skdeveloper
-      const twitterApiUrl = `https://best-all-in-one-video-downloader.p.rapidapi.com/dl?url=${encodeURIComponent(url)}`;
+      // PERBAIKAN: Menggunakan All Media Downloader untuk Twitter
+      const twitterApiUrl = 'https://all-media-downloader1.p.rapidapi.com/all';
       
+      // API ini butuh URLSearchParams sesuai dokumentasi resminya
+      const bodyParams = new URLSearchParams();
+      bodyParams.append('url', url);
+
       const response = await fetch(twitterApiUrl, {
-        method: 'GET', // API ini menggunakan method GET dengan query parameter
+        method: 'POST',
         headers: {
-          'x-rapidapi-host': 'best-all-in-one-video-downloader.p.rapidapi.com',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'x-rapidapi-host': 'all-media-downloader1.p.rapidapi.com',
           'x-rapidapi-key': process.env.RAPIDAPI_KEY || '', 
-        }
+        },
+        body: bodyParams.toString()
       });
 
       const data = await response.json();
@@ -29,28 +34,30 @@ export async function POST(req: Request) {
         throw new Error(data.message || 'Gagal ekstrak dari Twitter. Coba link lain.');
       }
 
-      // Normalisasi format data Twitter agar sama dengan UI Frontend kamu
-      // Asumsi output API skdeveloper memiliki property: title, thumbnail, dan array media atau links
+      // Normalisasi data untuk Frontend kamu
       const normalizedData = {
-        title: data.title || 'Video Twitter Berhasil Diekstrak',
-        thumbnail: data.thumbnail || data.cover || 'https://via.placeholder.com/400x500?text=Twitter+Media',
+        title: data.title || 'Video X/Twitter',
+        thumbnail: data.thumbnail || 'https://via.placeholder.com/400x500?text=Twitter+Media',
         source: 'Twitter',
-        author: data.author || 'X User',
-        // Mapping links dari skdeveloper ke format yang frontend kamu mengerti
-        medias: data.medias || data.links || [
-          {
-            url: data.url || data.video_url, // Sesuaikan dengan key JSON aktual dari skdeveloper
-            quality: 'HD',
-            extension: 'mp4',
-            type: 'video'
-          }
-        ]
+        author: data.extractor || 'X User',
+        // All Media Downloader biasanya mengembalikan array formats/urls
+        medias: data.formats ? data.formats.slice(0, 3).map((f: any) => ({
+          url: f.url,
+          quality: f.format_note || f.resolution || 'HD',
+          extension: f.ext || 'mp4',
+          type: 'video'
+        })) : [{
+          url: data.url,
+          quality: 'HD',
+          extension: 'mp4',
+          type: 'video'
+        }]
       };
 
       return NextResponse.json(normalizedData);
     }
 
-    // LOGIC DEFAULT: Untuk TikTok, IG, FB, dll (Tetap pakai 'social-download-all-in-one')
+    // LOGIC DEFAULT UNTUK TIKTOK, IG, DLL
     const apiUrl = 'https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink';
     
     const response = await fetch(apiUrl, {
@@ -66,7 +73,7 @@ export async function POST(req: Request) {
     const data = await response.json();
 
     if (!response.ok || data.error) {
-      throw new Error(data.message || 'Gagal ekstrak video. Pastikan link valid.');
+      throw new Error(data.message || 'Gagal ekstrak video.');
     }
 
     return NextResponse.json(data);
